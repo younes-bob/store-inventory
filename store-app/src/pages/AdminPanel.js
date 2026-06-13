@@ -4,7 +4,7 @@ import { getAllStoresData, getSales } from '../supabase';
 import { fmt, fmtDate, isToday, exportCSV } from '../utils';
 import { Spinner } from '../components/ui';
 
-export default function AdminPanel({ onBack }) {
+export default function AdminPanel({ t, lang, setLang, onBack }) {
   const [authed,       setAuthed]       = useState(false);
   const [pass,         setPass]         = useState('');
   const [passErr,      setPassErr]      = useState('');
@@ -34,7 +34,7 @@ export default function AdminPanel({ onBack }) {
 
   /* ── Login screen ── */
   if (!authed) return (
-    <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#1e1b4b 0%,#3730a3 50%,#4c1d95 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+    <div style={{ minHeight:'100vh', background:'linear-gradient(160deg,#0f0c29,#302b63,#24243e)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
       <div style={{ background:'#fff', borderRadius:24, padding:'40px 36px', width:'min(380px,100%)', boxShadow:'0 32px 80px rgba(0,0,0,.3)' }}>
         <div style={{ textAlign:'center', marginBottom:28 }}>
           <div style={{ fontSize:44, marginBottom:10 }}>🔐</div>

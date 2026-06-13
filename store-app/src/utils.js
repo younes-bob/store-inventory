@@ -1,7 +1,7 @@
 import { LOW_STOCK } from './config';
 
 export const uid   = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-export const fmt   = n  => '$' + Number(n).toFixed(2);
+export const fmt = n => Number(n).toLocaleString('fr-DZ') + ' DA';
 export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export const sanitize = s => String(s).trim().slice(0, 200);
 

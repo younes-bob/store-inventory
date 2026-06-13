@@ -136,10 +136,10 @@ function SaleModal({ item, onSell, onClose, t }) {
       <div style={{marginBottom:14,padding:14,background:'#fafafa',borderRadius:12,border:'1.5px solid #e5e7eb'}}>
         <div style={{fontSize:11,fontWeight:700,color:'#374151',marginBottom:10,textTransform:'uppercase',letterSpacing:.5}}>{t.salePrice}</div>
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-          <div style={{position:'relative',flex:1,minWidth:120}}>
-            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'#6b7280',fontSize:15}}>DA</span>
-            <input type="number" min="0" step="0.01" value={salePrice} onChange={e=>setSalePrice(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 10px 11px 28px',borderRadius:10,border:'1.5px solid #d1d5db',fontSize:17,fontWeight:800,outline:'none',color:'#111'}}/>
-          </div>
+          <div style={{display:'flex',alignItems:'stretch',flex:1,minWidth:120,border:'1.5px solid #d1d5db',borderRadius:10,overflow:'hidden',background:'#fff'}}>
+  <input type="number" min="0" step="1" value={salePrice} onChange={e=>setSalePrice(e.target.value)} style={{flex:1,padding:'11px 10px',border:'none',fontSize:17,fontWeight:800,outline:'none',color:'#111',background:'transparent',minWidth:0}}/>
+  <span style={{padding:'0 12px',fontWeight:700,color:'#6b7280',fontSize:13,display:'flex',alignItems:'center',background:'#f3f4f6',borderLeft:'1px solid #e5e7eb'}}>DA</span>
+</div>
           {discountPct>0&&<div style={{padding:'6px 14px',borderRadius:20,background:'#fef3c7',border:'1.5px solid #fcd34d',fontWeight:800,fontSize:13,color:'#b45309'}}>🏷️ {discountPct}% off</div>}
         </div>
         <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>

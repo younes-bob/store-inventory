@@ -137,7 +137,7 @@ function SaleModal({ item, onSell, onClose, t }) {
         <div style={{fontSize:11,fontWeight:700,color:'#374151',marginBottom:10,textTransform:'uppercase',letterSpacing:.5}}>{t.salePrice}</div>
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <div style={{position:'relative',flex:1,minWidth:120}}>
-            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'#6b7280',fontSize:15}}>$</span>
+            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontWeight:700,color:'#6b7280',fontSize:15}}>DA</span>
             <input type="number" min="0" step="0.01" value={salePrice} onChange={e=>setSalePrice(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 10px 11px 28px',borderRadius:10,border:'1.5px solid #d1d5db',fontSize:17,fontWeight:800,outline:'none',color:'#111'}}/>
           </div>
           {discountPct>0&&<div style={{padding:'6px 14px',borderRadius:20,background:'#fef3c7',border:'1.5px solid #fcd34d',fontWeight:800,fontSize:13,color:'#b45309'}}>🏷️ {discountPct}% off</div>}
@@ -243,7 +243,7 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
                 <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}><Dot hex={data.hex} size={16}/><span style={{fontWeight:700,fontSize:13,color:'#1f2937'}}>{cName}</span></div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:7,paddingLeft:23}}>
                   {data.variants.map((v,i)=>{const vb=stockBadge(v.stock);const isEd=editingV?.color===v.color&&editingV?.size===v.size;return(
-                    <div key={i} style={{padding:'7px 12px',borderRadius:12,border:`1.5px solid ${v.stock===0?'#fecaca':isEd?'#6366f1':'#e5e7eb'}`,background:v.stock===0?'#fff8f8':isEd?'#eef2ff':'#f9fafb',textAlign:'center',minWidth:58,transition:'all .15s'}}>
+                    <div key={i} style={{padding:'7px 12px',borderRadius:12,border:`1.5px solid DA{v.stock===0?'#fecaca':isEd?'#6366f1':'#e5e7eb'}`,background:v.stock===0?'#fff8f8':isEd?'#eef2ff':'#f9fafb',textAlign:'center',minWidth:58,transition:'all .15s'}}>
                       <div style={{fontWeight:700,fontSize:13,color:'#111',marginBottom:2}}>{v.size}</div>
                       {isEd?<input type="number" min="0" max="9999" value={editStock} autoFocus onChange={e=>setEditStock(clamp(Number(e.target.value),0,9999))} onBlur={saveQ} onKeyDown={e=>{if(e.key==='Enter')saveQ();if(e.key==='Escape')setEditingV(null);}} style={{width:44,padding:'2px 4px',borderRadius:6,border:'1.5px solid #6366f1',fontSize:12,textAlign:'center',outline:'none'}}/>
                       :<div onClick={()=>{setEditingV(v);setEditStock(v.stock);}} style={{fontSize:11,fontWeight:700,color:vb.fg,cursor:'pointer'}} title="Tap to edit">{v.stock===0?t.out:v.stock}</div>}

@@ -1,10 +1,28 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { getItems, setItems as dbSetItems, getSales, setSales as dbSetSales } from '../supabase';
+import { getItems, setItems as dbSetItems, getSales, setSales as dbSetSales, syncPending } from '../supabase';
 import { CATEGORIES } from '../config';
 import { uid, fmt, clamp, isToday, stockBadge, isLight, exportCSV, fmtDate } from '../utils';
 import { ToastContainer, Spinner, Dot, Modal, PhotoBox, ColorPicker, VariantBuilder } from '../components/ui';
 import VisualSearch from '../components/VisualSearch';
 import useToast from '../hooks/useToast';
+import { isOnline, onNetworkChange, hasPending } from '../offlineManager';
+
+/* ── Offline banner ── */
+function OfflineBanner({ pending }) {
+  return (
+    <div style={{
+      background: pending ? 'linear-gradient(90deg,#92400e,#b45309)' : 'linear-gradient(90deg,#374151,#4b5563)',
+      color: '#fff', textAlign: 'center', padding: '8px 16px',
+      fontSize: 12, fontWeight: 700, letterSpacing: 0.3,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    }}>
+      <span style={{ fontSize: 14 }}>📡</span>
+      {pending
+        ? '⚠️ Offline — unsaved changes will sync automatically when you reconnect'
+        : '📴 Offline — showing cached data'}
+    </div>
+  );
+}
 
 /* ── ProductForm ── */
 function ProductForm({ initial, onSubmit, onClose, t }) {
@@ -40,7 +58,7 @@ function ProductForm({ initial, onSubmit, onClose, t }) {
           <div style={{display:'flex',gap:12}}>
             <div style={{flex:1}}>
               <label style={{fontSize:12,fontWeight:700,color:'#374151',display:'block',marginBottom:5}}>{t.price}</label>
-              <input type="number" min="0" step="0.01" value={price} onChange={e=>{setPrice(e.target.value);setErr('');}} placeholder="0.00"
+              <input type="number" min="0" step="1" value={price} onChange={e=>{setPrice(e.target.value);setErr('');}} placeholder="0"
                 style={{width:'100%',boxSizing:'border-box',padding:'11px 13px',borderRadius:10,border:'1.5px solid #e5e7eb',fontSize:14,outline:'none'}}/>
             </div>
             <div style={{flex:1}}>
@@ -137,14 +155,14 @@ function SaleModal({ item, onSell, onClose, t }) {
         <div style={{fontSize:11,fontWeight:700,color:'#374151',marginBottom:10,textTransform:'uppercase',letterSpacing:.5}}>{t.salePrice}</div>
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'stretch',flex:1,minWidth:120,border:'1.5px solid #d1d5db',borderRadius:10,overflow:'hidden',background:'#fff'}}>
-  <input type="number" min="0" step="1" value={salePrice} onChange={e=>setSalePrice(e.target.value)} style={{flex:1,padding:'11px 10px',border:'none',fontSize:17,fontWeight:800,outline:'none',color:'#111',background:'transparent',minWidth:0}}/>
-  <span style={{padding:'0 12px',fontWeight:700,color:'#6b7280',fontSize:13,display:'flex',alignItems:'center',background:'#f3f4f6',borderLeft:'1px solid #e5e7eb'}}>DA</span>
-</div>
+            <input type="number" min="0" step="1" value={salePrice} onChange={e=>setSalePrice(e.target.value)} style={{flex:1,padding:'11px 10px',border:'none',fontSize:17,fontWeight:800,outline:'none',color:'#111',background:'transparent',minWidth:0}}/>
+            <span style={{padding:'0 12px',fontWeight:700,color:'#6b7280',fontSize:13,display:'flex',alignItems:'center',background:'#f3f4f6',borderLeft:'1px solid #e5e7eb'}}>DA</span>
+          </div>
           {discountPct>0&&<div style={{padding:'6px 14px',borderRadius:20,background:'#fef3c7',border:'1.5px solid #fcd34d',fontWeight:800,fontSize:13,color:'#b45309'}}>🏷️ {discountPct}% off</div>}
         </div>
         <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
           {[{label:t.fullPrice,pct:0},{label:'-10%',pct:10},{label:'-25%',pct:25},{label:'-50%',pct:50}].map(({label,pct})=>(
-            <button key={pct} type="button" onClick={()=>setSalePrice((item.price*(1-pct/100)).toFixed(2))} style={{padding:'5px 12px',borderRadius:20,border:'1.5px solid #e5e7eb',background:discountPct===pct?'#eef2ff':'#fff',cursor:'pointer',fontSize:12,fontWeight:700,color:discountPct===pct?'#4f46e5':'#374151',transition:'all .1s'}}>{label}</button>
+            <button key={pct} type="button" onClick={()=>setSalePrice(Math.round(item.price*(1-pct/100)))} style={{padding:'5px 12px',borderRadius:20,border:'1.5px solid #e5e7eb',background:discountPct===pct?'#eef2ff':'#fff',cursor:'pointer',fontSize:12,fontWeight:700,color:discountPct===pct?'#4f46e5':'#374151',transition:'all .1s'}}>{label}</button>
           ))}
         </div>
       </div>
@@ -197,16 +215,14 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
     <>
       <div ref={cardRef} style={{ background:'#fff', borderRadius:20, overflow:'hidden', transition:'all .25s', border:highlighted?'2.5px solid #6366f1':'1.5px solid #f0f0f0', boxShadow:highlighted?'0 0 0 6px rgba(99,102,241,0.12),0 12px 40px rgba(0,0,0,.12)':'0 2px 16px rgba(0,0,0,.06)' }}>
         <div style={{display:'flex'}}>
-          {/* Photo */}
           <div style={{width:90,minHeight:100,flexShrink:0,background:'linear-gradient(135deg,#f8f9ff,#f0f4ff)',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',position:'relative'}}>
             {item.photo?<img src={item.photo} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',minHeight:100}}/>:<span style={{fontSize:34}}>👕</span>}
             {highlighted&&<div style={{position:'absolute',top:6,left:6,background:'#6366f1',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:800,color:'#fff'}}>📍</div>}
           </div>
-          {/* Info */}
           <div style={{flex:1,padding:'14px 16px 12px',minWidth:0}}>
             <div style={{fontWeight:800,fontSize:15,color:'#111',marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
-              <span style={{fontSize:20,fontWeight:900,color:'#4338ca',letterSpacing:-0.5}}>{fmt(item.price)}</span>
+              <span style={{fontSize:18,fontWeight:900,color:'#4338ca',letterSpacing:-0.5}}>{fmt(item.price)}</span>
               <span style={{fontSize:11,padding:'3px 10px',borderRadius:20,fontWeight:700,background:sb.bg,color:sb.fg,display:'flex',alignItems:'center',gap:4}}>
                 <span style={{width:6,height:6,borderRadius:'50%',background:sb.dot,display:'inline-block'}}/>{sb.label}
               </span>
@@ -218,7 +234,6 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
             </div>
           </div>
         </div>
-        {/* Action bar */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',borderTop:'1px solid #f5f5f5'}}>
           {[
             {label:t.sale,       color:'#059669', bg:'#f0fdf4', action:()=>setModal('sale')},
@@ -234,7 +249,6 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
             </button>
           ))}
         </div>
-        {/* Expanded stock */}
         {expanded&&(
           <div style={{borderTop:'1px solid #f5f5f5',padding:'16px 18px',background:'#fafbff'}}>
             <p style={{fontSize:10,fontWeight:800,color:'#9ca3af',letterSpacing:1.5,textTransform:'uppercase',margin:'0 0 12px'}}>{t.stockBreakdown}</p>
@@ -243,7 +257,7 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
                 <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}><Dot hex={data.hex} size={16}/><span style={{fontWeight:700,fontSize:13,color:'#1f2937'}}>{cName}</span></div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:7,paddingLeft:23}}>
                   {data.variants.map((v,i)=>{const vb=stockBadge(v.stock);const isEd=editingV?.color===v.color&&editingV?.size===v.size;return(
-                    <div key={i} style={{padding:'7px 12px',borderRadius:12,border:`1.5px solid DA{v.stock===0?'#fecaca':isEd?'#6366f1':'#e5e7eb'}`,background:v.stock===0?'#fff8f8':isEd?'#eef2ff':'#f9fafb',textAlign:'center',minWidth:58,transition:'all .15s'}}>
+                    <div key={i} style={{padding:'7px 12px',borderRadius:12,border:`1.5px solid ${v.stock===0?'#fecaca':isEd?'#6366f1':'#e5e7eb'}`,background:v.stock===0?'#fff8f8':isEd?'#eef2ff':'#f9fafb',textAlign:'center',minWidth:58,transition:'all .15s'}}>
                       <div style={{fontWeight:700,fontSize:13,color:'#111',marginBottom:2}}>{v.size}</div>
                       {isEd?<input type="number" min="0" max="9999" value={editStock} autoFocus onChange={e=>setEditStock(clamp(Number(e.target.value),0,9999))} onBlur={saveQ} onKeyDown={e=>{if(e.key==='Enter')saveQ();if(e.key==='Escape')setEditingV(null);}} style={{width:44,padding:'2px 4px',borderRadius:6,border:'1.5px solid #6366f1',fontSize:12,textAlign:'center',outline:'none'}}/>
                       :<div onClick={()=>{setEditingV(v);setEditStock(v.stock);}} style={{fontSize:11,fontWeight:700,color:vb.fg,cursor:'pointer'}} title="Tap to edit">{v.stock===0?t.out:v.stock}</div>}
@@ -262,9 +276,44 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
   );
 }
 
+/* ── ReturnModal ── */
+function ReturnModal({ sale, onConfirm, onClose, t }) {
+  const [qty, setQty] = useState(sale.qty);
+  return (
+    <Modal onClose={onClose} width={400}>
+      <div style={{textAlign:'center',padding:'4px 0 16px'}}>
+        <div style={{fontSize:48,marginBottom:10}}>↩️</div>
+        <h3 style={{margin:'0 0 6px',fontSize:18,fontWeight:900,color:'#111'}}>{t.returnTitle||'Process Return'}</h3>
+        <p style={{color:'#6b7280',fontSize:13,margin:'0 0 20px'}}>"{sale.itemName}" · {sale.color} / {sale.size}</p>
+        <div style={{background:'#f9fafb',borderRadius:12,padding:'16px',marginBottom:20,textAlign:'left'}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#374151',marginBottom:10,textTransform:'uppercase',letterSpacing:.5}}>{t.returnQty||'Qty to return'}</div>
+          <div style={{display:'flex',alignItems:'center',gap:10,justifyContent:'center'}}>
+            <button type="button" onClick={()=>setQty(q=>Math.max(1,q-1))} style={{width:38,height:38,borderRadius:10,border:'1.5px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:20,fontWeight:700}}>−</button>
+            <span style={{fontSize:24,fontWeight:900,minWidth:40,textAlign:'center'}}>{qty}</span>
+            <button type="button" onClick={()=>setQty(q=>Math.min(sale.qty,q+1))} style={{width:38,height:38,borderRadius:10,border:'1.5px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:20,fontWeight:700}}>+</button>
+          </div>
+          <p style={{fontSize:11,color:'#9ca3af',margin:'8px 0 0',textAlign:'center'}}>max {sale.qty}</p>
+        </div>
+        <div style={{background:'#fef2f2',borderRadius:12,padding:'12px 16px',marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'center',border:'1px solid #fecaca'}}>
+          <span style={{fontSize:13,fontWeight:700,color:'#dc2626'}}>{t.returnRefund||'Refund amount'}</span>
+          <span style={{fontSize:20,fontWeight:900,color:'#dc2626'}}>{fmt(sale.salePrice * qty)}</span>
+        </div>
+        <p style={{fontSize:12,color:'#9ca3af',margin:'0 0 20px'}}>{t.returnNote||'Stock will be restored automatically.'}</p>
+        <div style={{display:'flex',gap:10}}>
+          <button onClick={onClose} style={{flex:1,padding:'12px',background:'#f9fafb',border:'1.5px solid #e5e7eb',borderRadius:12,fontWeight:600,fontSize:13,cursor:'pointer',color:'#374151'}}>{t.cancel}</button>
+          <button onClick={()=>{onConfirm(sale,qty);onClose();}} style={{flex:1,padding:'12px',background:'linear-gradient(135deg,#dc2626,#b91c1c)',color:'#fff',border:'none',borderRadius:12,fontWeight:800,fontSize:13,cursor:'pointer'}}>
+            {t.confirmReturn||'Confirm Return'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /* ── SalesPage ── */
-function SalesPage({ sales, onClear, storeName, t }) {
+function SalesPage({ sales, onClear, onReturn, storeName, t }) {
   const [filter,setFilter]=useState('all');
+  const [returnSale,setReturnSale]=useState(null);
   const now=Date.now();
   const filtered=useMemo(()=>{const s=[...sales].sort((a,b)=>b.ts-a.ts);if(filter==='today')return s.filter(r=>isToday(r.ts));if(filter==='week')return s.filter(r=>r.ts>now-7*24*3600*1000);return s;},[sales,filter,now]);
   const rev=filtered.reduce((s,r)=>s+r.total,0);
@@ -300,24 +349,34 @@ function SalesPage({ sales, onClear, storeName, t }) {
         :<div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead><tr style={{background:'#f9fafb'}}>
-              {[t.date,t.product,t.colorSize,t.qty,t.unitPrice,t.total,'Note'].map(h=><th key={h} style={{padding:'11px 14px',textAlign:'left',fontWeight:700,color:'#6b7280',fontSize:11,textTransform:'uppercase',letterSpacing:.5,whiteSpace:'nowrap'}}>{h}</th>)}
+              {[t.date,t.product,t.colorSize,t.qty,t.unitPrice,t.total,'Note',''].map((h,i)=><th key={i} style={{padding:'11px 14px',textAlign:'left',fontWeight:700,color:'#6b7280',fontSize:11,textTransform:'uppercase',letterSpacing:.5,whiteSpace:'nowrap'}}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {filtered.map((s,i)=>{const hd=s.salePrice<s.originalPrice;return(
-                <tr key={s.id} style={{borderTop:'1px solid #f5f5f5',background:i%2===0?'#fff':'#fafafa',transition:'background .1s'}} onMouseEnter={e=>e.currentTarget.style.background='#f8f9ff'} onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
-                  <td style={{padding:'12px 14px',color:'#6b7280',whiteSpace:'nowrap',fontSize:12}}>{fmtDate(s.ts)}</td>
+              {filtered.map((s,i)=>{const hd=s.salePrice<s.originalPrice; const isReturned=s.returned; return(
+                <tr key={s.id} style={{borderTop:'1px solid #f5f5f5',background:isReturned?'#fef2f2':i%2===0?'#fff':'#fafafa',transition:'background .1s',opacity:isReturned?.6:1}} onMouseEnter={e=>e.currentTarget.style.background=isReturned?'#fef2f2':'#f8f9ff'} onMouseLeave={e=>e.currentTarget.style.background=isReturned?'#fef2f2':i%2===0?'#fff':'#fafafa'}>
+                  <td style={{padding:'12px 14px',color:'#6b7280',whiteSpace:'nowrap',fontSize:12}}>
+                    {fmtDate(s.ts)}
+                    {isReturned&&<div style={{fontSize:10,fontWeight:700,color:'#dc2626',marginTop:2}}>↩️ {t.returned||'Returned'}</div>}
+                  </td>
                   <td style={{padding:'12px 14px',fontWeight:700,color:'#111'}}>{s.itemName}</td>
                   <td style={{padding:'12px 14px'}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:12,height:12,borderRadius:'50%',background:s.colorHex||'#9ca3af',display:'inline-block',border:isLight(s.colorHex||'')?'1.5px solid #ccc':'1.5px solid rgba(0,0,0,.1)'}}/><span>{s.color} / {s.size}</span></div></td>
                   <td style={{padding:'12px 14px',fontWeight:700,textAlign:'center'}}>{s.qty}</td>
                   <td style={{padding:'12px 14px'}}><div style={{fontWeight:700}}>{fmt(s.salePrice)}</div>{hd&&<div style={{fontSize:11,color:'#9ca3af',textDecoration:'line-through'}}>{fmt(s.originalPrice)}</div>}{hd&&<div style={{fontSize:10,padding:'1px 6px',background:'#fef3c7',borderRadius:6,color:'#b45309',fontWeight:700,display:'inline-block',marginTop:2}}>{Math.round((1-s.salePrice/s.originalPrice)*100)}% off</div>}</td>
-                  <td style={{padding:'12px 14px',fontWeight:900,color:'#059669',fontSize:15}}>{fmt(s.total)}</td>
+                  <td style={{padding:'12px 14px',fontWeight:900,color:isReturned?'#9ca3af':'#059669',fontSize:15,textDecoration:isReturned?'line-through':'none'}}>{fmt(s.total)}</td>
                   <td style={{padding:'12px 14px',color:'#9ca3af',fontSize:12,fontStyle:s.note?'normal':'italic'}}>{s.note||'—'}</td>
+                  <td style={{padding:'8px 14px'}}>
+                    {!isReturned
+                      ? <button onClick={()=>setReturnSale(s)} style={{padding:'5px 12px',background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:20,cursor:'pointer',fontSize:11,fontWeight:700,color:'#dc2626',whiteSpace:'nowrap'}}>↩️ {t.returnBtn||'Return'}</button>
+                      : <span style={{fontSize:11,fontWeight:700,color:'#dc2626',padding:'5px 10px',background:'#fef2f2',borderRadius:20,border:'1.5px solid #fecaca'}}>✓ {t.returned||'Returned'}</span>
+                    }
+                  </td>
                 </tr>
               );})}
             </tbody>
           </table>
         </div>}
       </div>
+      {returnSale&&<ReturnModal sale={returnSale} t={t} onClose={()=>setReturnSale(null)} onConfirm={onReturn}/>}
     </div>
   );
 }
@@ -329,6 +388,8 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   const [sales,setSalesState]=useState([]);
   const [loading,setLoading]=useState(true);
   const [syncStatus,setSyncStatus]=useState('synced');
+  const [online,setOnline]=useState(isOnline());
+  const [pendingSync,setPendingSync]=useState(false);
   const [search,setSearch]=useState('');
   const [filterCat,setFilterCat]=useState(0);
   const [filterStock,setFilterStock]=useState('All');
@@ -340,27 +401,107 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   const saveSalesTimer=useRef(null);
   const {toasts,show:toast}=useToast();
 
-  useEffect(()=>{let mounted=true;(async()=>{const[i,s]=await Promise.all([getItems(store.id),getSales(store.id)]);if(mounted){setItemsState(i);setSalesState(s);setLoading(false);}})();return()=>{mounted=false;};},[store.id]);
-  useEffect(()=>{const iv=setInterval(async()=>{const[i,s]=await Promise.all([getItems(store.id),getSales(store.id)]);setItemsState(i);setSalesState(s);},10000);return()=>clearInterval(iv);},[store.id]);
+  // Initial load
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      const[i,s]=await Promise.all([getItems(store.id),getSales(store.id)]);
+      if(mounted){setItemsState(i);setSalesState(s);setLoading(false);setPendingSync(hasPending(store.id));}
+    })();
+    return()=>{mounted=false;};
+  },[store.id]);
+
+  // Poll for remote changes every 15s (only when online)
+  useEffect(()=>{
+    const iv=setInterval(async()=>{
+      if(!isOnline())return;
+      const[i,s]=await Promise.all([getItems(store.id),getSales(store.id)]);
+      setItemsState(i);setSalesState(s);
+    },15000);
+    return()=>clearInterval(iv);
+  },[store.id]);
+
+  // Network status listener + auto-sync on reconnect
+  useEffect(()=>{
+    const cleanup = onNetworkChange(async(nowOnline)=>{
+      setOnline(nowOnline);
+      if(nowOnline){
+        toast('🌐 Back online — syncing…');
+        const synced = await syncPending(store.id);
+        setPendingSync(hasPending(store.id));
+        if(synced) toast('✅ All changes synced!');
+      } else {
+        toast('📴 Offline — changes saved locally','warn');
+        setPendingSync(hasPending(store.id));
+      }
+    });
+    return cleanup;
+  },[store.id,toast]);
+
   useEffect(()=>()=>{clearTimeout(saveItemsTimer.current);clearTimeout(saveSalesTimer.current);},[]);
   useEffect(()=>{const ids=new Set(items.map(i=>String(i.id)));Object.keys(cardRefs.current).forEach(k=>{if(!ids.has(k))delete cardRefs.current[k];});},[items]);
 
-  const persistItems=useCallback((next)=>{setSyncStatus('saving');clearTimeout(saveItemsTimer.current);saveItemsTimer.current=setTimeout(async()=>{const ok=await dbSetItems(store.id,next);setSyncStatus(ok?'synced':'error');if(!ok)toast(t.saveFailed,'error');}, 600);},[store.id,toast,t]);
-  const persistSales=useCallback((next)=>{setSyncStatus('saving');clearTimeout(saveSalesTimer.current);saveSalesTimer.current=setTimeout(async()=>{const ok=await dbSetSales(store.id,next);setSyncStatus(ok?'synced':'error');if(!ok)toast(t.saveFailed,'error');}, 600);},[store.id,toast,t]);
+  const persistItems=useCallback((next)=>{
+    setSyncStatus('saving');
+    clearTimeout(saveItemsTimer.current);
+    saveItemsTimer.current=setTimeout(async()=>{
+      const ok=await dbSetItems(store.id,next);
+      setSyncStatus(ok?'synced':'error');
+      setPendingSync(hasPending(store.id));
+      if(!ok&&isOnline())toast(t.saveFailed,'error');
+    },600);
+  },[store.id,toast,t]);
+
+  const persistSales=useCallback((next)=>{
+    setSyncStatus('saving');
+    clearTimeout(saveSalesTimer.current);
+    saveSalesTimer.current=setTimeout(async()=>{
+      const ok=await dbSetSales(store.id,next);
+      setSyncStatus(ok?'synced':'error');
+      setPendingSync(hasPending(store.id));
+      if(!ok&&isOnline())toast(t.saveFailed,'error');
+    },600);
+  },[store.id,toast,t]);
 
   function updateItems(fn){setItemsState(prev=>{const next=typeof fn==='function'?fn(prev):fn;persistItems(next);return next;});}
   function updateSales(fn){setSalesState(prev=>{const next=typeof fn==='function'?fn(prev):fn;persistSales(next);return next;});}
 
   function handleMatch(id){setTab('inventory');setSearch('');setFilterCat(0);setFilterStock('All');setHighlightId(String(id));setTimeout(()=>{cardRefs.current[String(id)]?.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>setHighlightId(null),3500);},150);}
-  function handleSell(item,{color,size,qty,salePrice,originalPrice,note,total}){updateItems(prev=>prev.map(i=>i.id!==item.id?i:{...i,variants:i.variants.map(v=>v.color===color&&v.size===size?{...v,stock:clamp(v.stock-qty,0,9999)}:v)}));const colorHex=item.variants.find(v=>v.color===color)?.hex||'#9ca3af';updateSales(prev=>[...prev,{id:uid(),ts:Date.now(),itemId:item.id,itemName:item.name,color,colorHex,size,qty,salePrice,originalPrice,note,total}]);toast(`✓ ${qty}× ${item.name} ${t.soldToast} ${fmt(total)}`);}
 
-  const filtered=useMemo(()=>{const rc=filterCat===0?null:CATEGORIES[filterCat-1];const q=search.toLowerCase();return items.filter(item=>{const ms=!q||item.name.toLowerCase().includes(q)||item.category.toLowerCase().includes(q)||item.variants.some(v=>v.color.toLowerCase().includes(q));const mc=!rc||item.category===rc;const tot=item.variants.reduce((s,v)=>s+v.stock,0);const mst=filterStock==='All'?true:filterStock==='InStock'?tot>5:filterStock==='Low'?(tot>0&&tot<=5):tot===0;return ms&&mc&&mst;});},[items,search,filterCat,filterStock]);
+  function handleSell(item,{color,size,qty,salePrice,originalPrice,note,total}){
+    updateItems(prev=>prev.map(i=>i.id!==item.id?i:{...i,variants:i.variants.map(v=>v.color===color&&v.size===size?{...v,stock:clamp(v.stock-qty,0,9999)}:v)}));
+    const colorHex=item.variants.find(v=>v.color===color)?.hex||'#9ca3af';
+    updateSales(prev=>[...prev,{id:uid(),ts:Date.now(),itemId:item.id,itemName:item.name,color,colorHex,size,qty,salePrice,originalPrice,note,total}]);
+    toast(`✓ ${qty}× ${item.name} ${t.soldToast} ${fmt(total)}`);
+  }
+
+  function handleReturn(sale, returnQty) {
+    updateSales(prev=>prev.map(s=>s.id!==sale.id?s:{...s,returned:true,returnedQty:returnQty,returnedAt:Date.now()}));
+    updateItems(prev=>prev.map(i=>i.id!==sale.itemId?i:{...i,variants:i.variants.map(v=>v.color===sale.color&&v.size===sale.size?{...v,stock:clamp(v.stock+returnQty,0,9999)}:v)}));
+    toast(returnQty+"× "+sale.itemName+" returned — stock restored","warn");
+  }
+
+  const filtered=useMemo(()=>{
+    const rc=filterCat===0?null:CATEGORIES[filterCat-1];
+    const q=search.toLowerCase();
+    return items.filter(item=>{
+      const ms=!q||item.name.toLowerCase().includes(q)||item.category.toLowerCase().includes(q)||item.variants.some(v=>v.color.toLowerCase().includes(q));
+      const mc=!rc||item.category===rc;
+      const tot=item.variants.reduce((s,v)=>s+v.stock,0);
+      const mst=filterStock==='All'?true:filterStock==='InStock'?tot>5:filterStock==='Low'?(tot>0&&tot<=5):tot===0;
+      return ms&&mc&&mst;
+    });
+  },[items,search,filterCat,filterStock]);
 
   const oos=items.filter(i=>i.variants.reduce((s,v)=>s+v.stock,0)===0).length;
   const low=items.filter(i=>{const tt=i.variants.reduce((s,v)=>s+v.stock,0);return tt>0&&tt<=5;}).length;
   const todayRev=sales.filter(s=>isToday(s.ts)).reduce((a,s)=>a+s.total,0);
-  const syncColor=syncStatus==='saving'?'#fbbf24':syncStatus==='error'?'#f87171':'#4ade80';
-  const syncLabel=syncStatus==='saving'?t.saving:syncStatus==='error'?t.saveFailed:t.synced;
+
+  // Sync status label
+  const syncColor = !online ? '#9ca3af' : syncStatus==='saving'?'#fbbf24':syncStatus==='error'?'#f87171':'#4ade80';
+  const syncLabel = !online
+    ? (pendingSync ? '⚠️ Offline (unsaved)' : '📴 Offline')
+    : syncStatus==='saving'?t.saving:syncStatus==='error'?t.saveFailed:t.synced;
 
   if(loading)return <Spinner label={`Loading ${store.name}…`}/>;
 
@@ -368,6 +509,9 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
 
   return(
     <div dir={t.dir} style={{minHeight:'100vh',background:'#f0f2f8',fontFamily}}>
+      {/* Offline banner */}
+      {!online && <OfflineBanner pending={pendingSync}/>}
+
       {/* Header */}
       <div style={{background:'linear-gradient(135deg,#0f0c29,#302b63,#24243e)',padding:'0 0 0'}}>
         <div style={{maxWidth:900,margin:'0 auto',padding:'20px 20px 0'}}>
@@ -380,7 +524,6 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
               </div>
             </div>
             <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-              {/* Language switcher */}
               <div style={{display:'flex',gap:4,background:'rgba(255,255,255,0.1)',borderRadius:20,padding:4}}>
                 {['en','fr','ar'].map(l=>(
                   <button key={l} onClick={()=>setLang(l)} style={{padding:'5px 12px',borderRadius:16,border:'none',fontWeight:700,fontSize:12,cursor:'pointer',background:lang===l?'#fff':'transparent',color:lang===l?'#302b63':'#fff',transition:'all .2s'}}>
@@ -414,9 +557,8 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
         </div>
       </div>
 
-      {tab==='sales'?<SalesPage sales={sales} onClear={()=>updateSales([])} storeName={store.name} t={t}/>:(
+      {tab==='sales'?<SalesPage sales={sales} onClear={()=>updateSales([])} onReturn={handleReturn} storeName={store.name} t={t}/>:(
         <div style={{maxWidth:900,margin:'0 auto',padding:'20px 20px 0'}}>
-          {/* Toolbar */}
           <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:18}}>
             <div style={{flex:1,minWidth:180,position:'relative'}}>
               <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontSize:15,color:'#9ca3af'}}>🔍</span>

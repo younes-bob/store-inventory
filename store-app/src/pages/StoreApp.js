@@ -288,7 +288,8 @@ function ItemCard({ item, onUpdate, onDelete, onSell, highlighted, cardRef, t })
 
 /* ── ReturnModal ── */
 function ReturnModal({ sale, onConfirm, onClose, t }) {
-  const [qty, setQty] = useState(sale.qty);
+  const maxReturn = sale.qty - (sale.returnedQty || 0);
+  const [qty, setQty] = useState(maxReturn);
   return (
     <Modal onClose={onClose} width={400}>
       <div style={{textAlign:'center',padding:'4px 0 16px'}}>
@@ -300,9 +301,9 @@ function ReturnModal({ sale, onConfirm, onClose, t }) {
           <div style={{display:'flex',alignItems:'center',gap:10,justifyContent:'center'}}>
             <button type="button" onClick={()=>setQty(q=>Math.max(1,q-1))} style={{width:38,height:38,borderRadius:10,border:'1.5px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:20,fontWeight:700}}>−</button>
             <span style={{fontSize:24,fontWeight:900,minWidth:40,textAlign:'center'}}>{qty}</span>
-            <button type="button" onClick={()=>setQty(q=>Math.min(sale.qty,q+1))} style={{width:38,height:38,borderRadius:10,border:'1.5px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:20,fontWeight:700}}>+</button>
+            <button type="button" onClick={()=>setQty(q=>Math.min(maxReturn,q+1))} style={{width:38,height:38,borderRadius:10,border:'1.5px solid #e5e7eb',background:'#fff',cursor:'pointer',fontSize:20,fontWeight:700}}>+</button>
           </div>
-          <p style={{fontSize:11,color:'#9ca3af',margin:'8px 0 0',textAlign:'center'}}>max {sale.qty}</p>
+          <p style={{fontSize:11,color:'#9ca3af',margin:'8px 0 0',textAlign:'center'}}>max {maxReturn}</p>
         </div>
         <div style={{background:'#fef2f2',borderRadius:12,padding:'12px 16px',marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'center',border:'1px solid #fecaca'}}>
           <span style={{fontSize:13,fontWeight:700,color:'#dc2626'}}>{t.returnRefund||'Refund amount'}</span>
@@ -363,11 +364,12 @@ function SalesPage({ sales, onClear, onReturn, storeName, t }) {
               {[t.date,t.product,t.colorSize,t.qty,t.unitPrice,t.total,'Note',''].map((h,i)=><th key={i} style={{padding:'11px 14px',textAlign:'left',fontWeight:700,color:'#6b7280',fontSize:11,textTransform:'uppercase',letterSpacing:.5,whiteSpace:'nowrap'}}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {filtered.map((s,i)=>{const hd=s.salePrice<s.originalPrice; const isReturned=s.returned; return(
-                <tr key={s.id} style={{borderTop:'1px solid #f5f5f5',background:isReturned?'#fef2f2':i%2===0?'#fff':'#fafafa',transition:'background .1s',opacity:isReturned?.6:1}} onMouseEnter={e=>e.currentTarget.style.background=isReturned?'#fef2f2':'#f8f9ff'} onMouseLeave={e=>e.currentTarget.style.background=isReturned?'#fef2f2':i%2===0?'#fff':'#fafafa'}>
+              {filtered.map((s,i)=>{const hd=s.salePrice<s.originalPrice; const isReturned=s.returned; const isPartial=s.partialReturn; return(
+                <tr key={s.id} style={{borderTop:'1px solid #f5f5f5',background:(isReturned||isPartial)?'#fef2f2':i%2===0?'#fff':'#fafafa',transition:'background .1s',opacity:isReturned?.6:1}} onMouseEnter={e=>e.currentTarget.style.background=(isReturned||isPartial)?'#fef2f2':'#f8f9ff'} onMouseLeave={e=>e.currentTarget.style.background=(isReturned||isPartial)?'#fef2f2':i%2===0?'#fff':'#fafafa'}>
                   <td style={{padding:'12px 14px',color:'#6b7280',whiteSpace:'nowrap',fontSize:12}}>
                     {fmtDate(s.ts)}
                     {isReturned&&<div style={{fontSize:10,fontWeight:700,color:'#dc2626',marginTop:2}}>↩️ {t.returned||'Returned'}</div>}
+                    {isPartial&&<div style={{fontSize:10,fontWeight:700,color:'#b45309',marginTop:2}}>↩️ {s.returnedQty} {t.returned||'returned'}</div>}
                   </td>
                   <td style={{padding:'12px 14px',fontWeight:700,color:'#111'}}>{s.itemName}</td>
                   <td style={{padding:'12px 14px'}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{width:12,height:12,borderRadius:'50%',background:s.colorHex||'#9ca3af',display:'inline-block',border:isLight(s.colorHex||'')?'1.5px solid #ccc':'1.5px solid rgba(0,0,0,.1)'}}/><span>{s.color} / {s.size}</span></div></td>
@@ -376,9 +378,9 @@ function SalesPage({ sales, onClear, onReturn, storeName, t }) {
                   <td style={{padding:'12px 14px',fontWeight:900,color:isReturned?'#9ca3af':'#059669',fontSize:15,textDecoration:isReturned?'line-through':'none'}}>{fmt(s.total)}</td>
                   <td style={{padding:'12px 14px',color:'#9ca3af',fontSize:12,fontStyle:s.note?'normal':'italic'}}>{s.note||'—'}</td>
                   <td style={{padding:'8px 14px'}}>
-                    {!isReturned
-                      ? <button onClick={()=>setReturnSale(s)} style={{padding:'5px 12px',background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:20,cursor:'pointer',fontSize:11,fontWeight:700,color:'#dc2626',whiteSpace:'nowrap'}}>↩️ {t.returnBtn||'Return'}</button>
-                      : <span style={{fontSize:11,fontWeight:700,color:'#dc2626',padding:'5px 10px',background:'#fef2f2',borderRadius:20,border:'1.5px solid #fecaca'}}>✓ {t.returned||'Returned'}</span>
+                    {isReturned
+                      ? <span style={{fontSize:11,fontWeight:700,color:'#dc2626',padding:'5px 10px',background:'#fef2f2',borderRadius:20,border:'1.5px solid #fecaca'}}>✓ {t.returned||'Returned'}</span>
+                      : <button onClick={()=>setReturnSale(s)} style={{padding:'5px 12px',background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:20,cursor:'pointer',fontSize:11,fontWeight:700,color:'#dc2626',whiteSpace:'nowrap'}}>↩️ {t.returnBtn||'Return'}</button>
                     }
                   </td>
                 </tr>
@@ -487,7 +489,9 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   }
 
   function handleReturn(sale, returnQty) {
-    updateSales(prev=>prev.map(s=>s.id!==sale.id?s:{...s,returned:true,returnedQty:returnQty,returnedAt:Date.now()}));
+    const refund = sale.salePrice * returnQty;
+    const fullyReturned = returnQty >= sale.qty;
+    updateSales(prev=>prev.map(s=>s.id!==sale.id?s:{...s,returned:fullyReturned,partialReturn:!fullyReturned,returnedQty:returnQty,returnedAt:Date.now(),total:Math.max(0,s.total-refund)}));
     updateItems(prev=>prev.map(i=>i.id!==sale.itemId?i:{...i,variants:i.variants.map(v=>v.color===sale.color&&v.size===sale.size?{...v,stock:clamp(v.stock+returnQty,0,9999)}:v)}));
     toast(returnQty+"× "+sale.itemName+" returned — stock restored","warn");
   }

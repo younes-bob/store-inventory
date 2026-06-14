@@ -5,7 +5,7 @@ import { uid, fmt, clamp, isToday, stockBadge, isLight, exportCSV, fmtDate } fro
 import { ToastContainer, Spinner, Dot, Modal, PhotoBox, ColorPicker, VariantBuilder } from '../components/ui';
 import VisualSearch from '../components/VisualSearch';
 import useToast from '../hooks/useToast';
-import { isOnline, onNetworkChange, hasPending } from '../offlineManager';
+import { isOnline, onNetworkChange, hasPending, readCache } from '../offlineManager';
 
 /* ── Offline banner ── */
 function OfflineBanner({ pending }) {
@@ -384,9 +384,9 @@ function SalesPage({ sales, onClear, onReturn, storeName, t }) {
 /* ── Main StoreApp ── */
 export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   const [tab,setTab]=useState('inventory');
-  const [items,setItemsState]=useState([]);
-  const [sales,setSalesState]=useState([]);
-  const [loading,setLoading]=useState(true);
+  const [items,setItemsState]=useState(()=>readCache('items',store.id)||[]);
+  const [sales,setSalesState]=useState(()=>readCache('sales',store.id)||[]);
+  const [loading,setLoading]=useState(()=>!(readCache('items',store.id)));
   const [syncStatus,setSyncStatus]=useState('synced');
   const [online,setOnline]=useState(isOnline());
   const [pendingSync,setPendingSync]=useState(false);

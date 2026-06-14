@@ -37,7 +37,11 @@ function ProductForm({ initial, onSubmit, onClose, t }) {
   function submit() {
     if (!name.trim()) { setErr(t.productName); return; }
     if (!price || Number(price)<0) { setErr(t.price); return; }
-    const variants = rows.flatMap(r=>r.sizes.filter(s=>s.size).map(s=>({color:r.color,hex:r.hex,size:s.size,stock:clamp(s.stock,0,9999)})));
+    // Build variants and merge any duplicates by summing stock
+    const rawVariants = rows.flatMap(r=>r.sizes.filter(s=>s.size).map(s=>({color:r.color,hex:r.hex,size:s.size,stock:clamp(s.stock,0,9999)})));
+    const mergeMap={};
+    rawVariants.forEach(v=>{const k=v.color+'__'+v.size;if(mergeMap[k])mergeMap[k]={...mergeMap[k],stock:mergeMap[k].stock+v.stock};else mergeMap[k]={...v};});
+    const variants=Object.values(mergeMap);
     onSubmit({...initial,name:name.trim(),price:Number(price),category:cat,photo,variants});
     onClose();
   }
@@ -94,8 +98,14 @@ function SaleModal({ item, onSell, onClose, t }) {
   const [salePrice,setSalePrice] = useState(String(item.price));
   const [note,setNote] = useState('');
   const [msg,setMsg]   = useState({text:'',ok:true});
-  const sizesForColor  = variants.filter(v=>v.color===selC);
-  const variant        = variants.find(v=>v.color===selC&&v.size===selS);
+  // Merge duplicate color+size entries by summing stock
+  const mergedVariants = useMemo(()=>{
+    const map={};
+    variants.forEach(v=>{const k=v.color+'__'+v.size;if(map[k])map[k]={...map[k],stock:map[k].stock+v.stock};else map[k]={...v};});
+    return Object.values(map);
+  },[variants]);
+  const sizesForColor  = mergedVariants.filter(v=>v.color===selC);
+  const variant        = mergedVariants.find(v=>v.color===selC&&v.size===selS);
   const salePriceNum   = parseFloat(salePrice)||0;
   const discountPct    = salePriceNum<item.price?Math.round((1-salePriceNum/item.price)*100):0;
   const total          = salePriceNum*qty;

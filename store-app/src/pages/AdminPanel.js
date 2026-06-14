@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { STORES, ADMIN_PASS } from '../config';
-import { getAllStoresData, getSales } from '../supabase';
+import { getAllStoresData } from '../supabase';
 import { fmt, fmtDate, isToday, exportCSV } from '../utils';
 import { Spinner } from '../components/ui';
 
@@ -15,8 +15,7 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
 
   async function fetchAll() {
     const ids  = STORES.map(s => s.id);
-    const data = await getAllStoresData(ids);
-    return data;
+    return await getAllStoresData(ids);
   }
 
   async function handleLogin() {
@@ -32,7 +31,6 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
     setRefreshing(false);
   }
 
-  /* ── Login screen ── */
   if (!authed) return (
     <div style={{ minHeight:'100vh', background:'linear-gradient(160deg,#0f0c29,#302b63,#24243e)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
       <div style={{ background:'#fff', borderRadius:24, padding:'40px 36px', width:'min(380px,100%)', boxShadow:'0 32px 80px rgba(0,0,0,.3)' }}>
@@ -59,11 +57,10 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
 
   if (loading) return <Spinner label="Loading all stores…"/>;
 
-  /* ── Store drill-down ── */
   if (selectedStore) {
     const d       = storesData[selectedStore.id] || { items:[], sales:[] };
-    const rev     = d.sales.reduce((s,r)=>s+r.total,0);
-    const todayRev = d.sales.filter(r=>isToday(r.ts)).reduce((s,r)=>s+r.total,0);
+    const rev     = d.sales.filter(r=>!r.returned).reduce((s,r)=>s+r.total,0);
+    const todayRev = d.sales.filter(r=>isToday(r.ts)&&!r.returned).reduce((s,r)=>s+r.total,0);
     return (
       <div style={{ minHeight:'100vh', background:'#f5f6fa' }}>
         <div style={{ background:'linear-gradient(135deg,#1e1b4b,#4c1d95)', padding:'20px 28px' }}>
@@ -95,7 +92,6 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
             ))}
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-            {/* Products */}
             <div style={{ background:'#fff', borderRadius:16, border:'1.5px solid #f0f0f0', overflow:'hidden' }}>
               <div style={{ padding:'14px 18px', borderBottom:'1px solid #f3f4f6', fontWeight:800, fontSize:15 }}>📦 Products ({d.items.length})</div>
               {d.items.length===0
@@ -113,7 +109,6 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
                   ))
               }
             </div>
-            {/* Sales */}
             <div style={{ background:'#fff', borderRadius:16, border:'1.5px solid #f0f0f0', overflow:'hidden' }}>
               <div style={{ padding:'14px 18px', borderBottom:'1px solid #f3f4f6', fontWeight:800, fontSize:15 }}>🛍️ Recent Sales</div>
               {d.sales.length===0
@@ -143,11 +138,10 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
     );
   }
 
-  /* ── All stores ── */
   const allItems = Object.values(storesData).flatMap(d=>d.items);
   const allSales = Object.values(storesData).flatMap(d=>d.sales);
-  const totalRev = allSales.reduce((s,r)=>s+r.total,0);
-  const todayRev = allSales.filter(r=>isToday(r.ts)).reduce((s,r)=>s+r.total,0);
+  const totalRev = allSales.filter(r=>!r.returned).reduce((s,r)=>s+r.total,0);
+  const todayRev = allSales.filter(r=>isToday(r.ts)&&!r.returned).reduce((s,r)=>s+r.total,0);
 
   return (
     <div style={{ minHeight:'100vh', background:'#f5f6fa' }}>
@@ -170,7 +164,6 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
         </div>
       </div>
       <div style={{ maxWidth:900, margin:'0 auto', padding:'28px 20px' }}>
-        {/* Network stats */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))', gap:14, marginBottom:28 }}>
           {[
             { icon:'🏪', label:'Stores',          value:STORES.length,    bg:'linear-gradient(135deg,#4f46e5,#7c3aed)' },
@@ -185,7 +178,6 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
             </div>
           ))}
         </div>
-        {/* Store list */}
         <h3 style={{ margin:'0 0 16px', fontSize:17, fontWeight:800, color:'#1e1b4b' }}>🏪 All Stores</h3>
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           {STORES.map(store => {

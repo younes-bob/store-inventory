@@ -326,13 +326,14 @@ function SalesPage({ sales, onClear, onReturn, storeName, t }) {
   const [returnSale,setReturnSale]=useState(null);
   const now=Date.now();
   const filtered=useMemo(()=>{const s=[...sales].sort((a,b)=>b.ts-a.ts);if(filter==='today')return s.filter(r=>isToday(r.ts));if(filter==='week')return s.filter(r=>r.ts>now-7*24*3600*1000);return s;},[sales,filter,now]);
-  const rev=filtered.reduce((s,r)=>s+r.total,0);
-  const sold=filtered.reduce((s,r)=>s+r.qty,0);
-  const todayRev=sales.filter(r=>isToday(r.ts)).reduce((s,r)=>s+r.total,0);
+  const active=filtered.filter(r=>!r.returned);
+  const rev=active.reduce((s,r)=>s+r.total,0);
+  const sold=active.reduce((s,r)=>s+r.qty,0);
+  const todayRev=sales.filter(r=>isToday(r.ts)&&!r.returned).reduce((s,r)=>s+r.total,0);
   return(
     <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 60px'}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:14,marginBottom:24}}>
-        {[{icon:'💰',label:t.revenue,value:fmt(rev),g:'linear-gradient(135deg,#059669,#0d9488)'},{icon:'📦',label:t.itemsSold,value:sold+' pcs',g:'linear-gradient(135deg,#4f46e5,#7c3aed)'},{icon:'📅',label:t.today,value:fmt(todayRev),g:'linear-gradient(135deg,#d97706,#b45309)'},{icon:'🧾',label:t.transactions,value:filtered.length,g:'linear-gradient(135deg,#0284c7,#0369a1)'}].map(s=>(
+        {[{icon:'💰',label:t.revenue,value:fmt(rev),g:'linear-gradient(135deg,#059669,#0d9488)'},{icon:'📦',label:t.itemsSold,value:sold+' pcs',g:'linear-gradient(135deg,#4f46e5,#7c3aed)'},{icon:'📅',label:t.today,value:fmt(todayRev),g:'linear-gradient(135deg,#d97706,#b45309)'},{icon:'🧾',label:t.transactions,value:active.length,g:'linear-gradient(135deg,#0284c7,#0369a1)'}].map(s=>(
           <div key={s.label} style={{background:s.g,borderRadius:18,padding:'18px 20px',boxShadow:'0 8px 24px rgba(0,0,0,.15)'}}>
             <div style={{fontSize:22,marginBottom:6}}>{s.icon}</div>
             <div style={{fontSize:10,color:'rgba(255,255,255,.7)',fontWeight:700,textTransform:'uppercase',letterSpacing:.8,marginBottom:4}}>{s.label}</div>
@@ -505,7 +506,7 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
 
   const oos=items.filter(i=>i.variants.reduce((s,v)=>s+v.stock,0)===0).length;
   const low=items.filter(i=>{const tt=i.variants.reduce((s,v)=>s+v.stock,0);return tt>0&&tt<=5;}).length;
-  const todayRev=sales.filter(s=>isToday(s.ts)).reduce((a,s)=>a+s.total,0);
+  const todayRev=sales.filter(s=>isToday(s.ts)&&!s.returned).reduce((a,s)=>a+s.total,0);
 
   // Sync status label
   const syncColor = !online ? '#9ca3af' : syncStatus==='saving'?'#fbbf24':syncStatus==='error'?'#f87171':'#4ade80';

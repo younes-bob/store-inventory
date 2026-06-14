@@ -1,4 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import {
+  readCache, writeCache,
+  readPending, writePending, clearPending,
+  isOnline,
+} from './offlineManager';
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -7,7 +12,7 @@ const supabase = createClient(
 
 export default supabase;
 
-/* ── Compress photo before storing ─── */
+/* ── Photo compression ──────────────────────────── */
 export function compressPhoto(dataUrl) {
   return new Promise(resolve => {
     try {
@@ -16,7 +21,7 @@ export function compressPhoto(dataUrl) {
         const MAX = 500;
         const scale = Math.min(1, MAX / Math.max(img.width, img.height));
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * scale);
+        canvas.width  = Math.round(img.width  * scale);
         canvas.height = Math.round(img.height * scale);
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL('image/jpeg', 0.75));
@@ -27,52 +32,147 @@ export function compressPhoto(dataUrl) {
   });
 }
 
-/* ── Items ─────────────────────────── */
+/* ── Items ──────────────────────────────────────── */
 export async function getItems(storeId) {
-  const { data, error } = await supabase
-    .from('items')
-    .select('data')
-    .eq('store_id', storeId)
-    .single();
-  if (error || !data) return [];
-  return Array.isArray(data.data) ? data.data : [];
+  // Try remote first; fall back to cache if offline or error
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabase
+        .from('items')
+        .select('data')
+        .eq('store_id', storeId)
+        .single();
+      if (!error && data) {
+        const items = Array.isArray(data.data) ? data.data : [];
+        writeCache('items', storeId, items);   // keep cache fresh
+        return items;
+      }
+    } catch (_) {}
+  }
+  // Offline or fetch failed – return cache (merge pending if any)
+  const cached  = readCache('items', storeId)   || [];
+  const pending = readPending('items', storeId);
+  return pending !== null ? pending : cached;
 }
 
 export async function setItems(storeId, items) {
-  // Compress any new photos
+  // Compress photos
   const ready = await Promise.all(items.map(async item => {
     if (item.photo && item.photo.startsWith('data:image')) {
       return { ...item, photo: await compressPhoto(item.photo) };
     }
     return item;
   }));
-  const { error } = await supabase
-    .from('items')
-    .upsert({ store_id: storeId, data: ready, updated_at: new Date().toISOString() },
-             { onConflict: 'store_id' });
-  return !error;
+
+  // Always write to cache immediately
+  writeCache('items', storeId, ready);
+
+  if (!isOnline()) {
+    writePending('items', storeId, ready);
+    return true;  // report success – will sync later
+  }
+
+  try {
+    const { error } = await supabase
+      .from('items')
+      .upsert(
+        { store_id: storeId, data: ready, updated_at: new Date().toISOString() },
+        { onConflict: 'store_id' }
+      );
+    if (error) {
+      writePending('items', storeId, ready);
+      return false;
+    }
+    clearPending('items', storeId);
+    return true;
+  } catch (_) {
+    writePending('items', storeId, ready);
+    return false;
+  }
 }
 
-/* ── Sales ─────────────────────────── */
+/* ── Sales ──────────────────────────────────────── */
 export async function getSales(storeId) {
-  const { data, error } = await supabase
-    .from('sales')
-    .select('data')
-    .eq('store_id', storeId)
-    .single();
-  if (error || !data) return [];
-  return Array.isArray(data.data) ? data.data : [];
+  if (isOnline()) {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('data')
+        .eq('store_id', storeId)
+        .single();
+      if (!error && data) {
+        const sales = Array.isArray(data.data) ? data.data : [];
+        writeCache('sales', storeId, sales);
+        return sales;
+      }
+    } catch (_) {}
+  }
+  const cached  = readCache('sales', storeId)   || [];
+  const pending = readPending('sales', storeId);
+  return pending !== null ? pending : cached;
 }
 
 export async function setSales(storeId, sales) {
-  const { error } = await supabase
-    .from('sales')
-    .upsert({ store_id: storeId, data: sales, updated_at: new Date().toISOString() },
-             { onConflict: 'store_id' });
-  return !error;
+  writeCache('sales', storeId, sales);
+
+  if (!isOnline()) {
+    writePending('sales', storeId, sales);
+    return true;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('sales')
+      .upsert(
+        { store_id: storeId, data: sales, updated_at: new Date().toISOString() },
+        { onConflict: 'store_id' }
+      );
+    if (error) {
+      writePending('sales', storeId, sales);
+      return false;
+    }
+    clearPending('sales', storeId);
+    return true;
+  } catch (_) {
+    writePending('sales', storeId, sales);
+    return false;
+  }
 }
 
-/* ── Admin: get all stores data ────── */
+/* ── Sync pending writes when back online ───────── */
+export async function syncPending(storeId) {
+  let synced = false;
+
+  const pendingItems = readPending('items', storeId);
+  if (pendingItems !== null) {
+    try {
+      const { error } = await supabase
+        .from('items')
+        .upsert(
+          { store_id: storeId, data: pendingItems, updated_at: new Date().toISOString() },
+          { onConflict: 'store_id' }
+        );
+      if (!error) { clearPending('items', storeId); synced = true; }
+    } catch (_) {}
+  }
+
+  const pendingSales = readPending('sales', storeId);
+  if (pendingSales !== null) {
+    try {
+      const { error } = await supabase
+        .from('sales')
+        .upsert(
+          { store_id: storeId, data: pendingSales, updated_at: new Date().toISOString() },
+          { onConflict: 'store_id' }
+        );
+      if (!error) { clearPending('sales', storeId); synced = true; }
+    } catch (_) {}
+  }
+
+  return synced;
+}
+
+/* ── Admin: all stores ──────────────────────────── */
 export async function getAllStoresData(storeIds) {
   const [itemsRes, salesRes] = await Promise.all([
     supabase.from('items').select('store_id, data').in('store_id', storeIds),

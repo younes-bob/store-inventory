@@ -35,7 +35,10 @@ export function exportCSV(sales, storeName) {
   a.href = url; a.download = `${storeName}-sales-${Date.now()}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
-/* ── Fuzzy search ─────────────────────────────── */
+
+/* ── Fuzzy search ──────────────────────────────────
+   Lets the search box tolerate typos (e.g. "drss" still
+   suggests "Summer Dress") using edit-distance matching. */
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
   if (m === 0) return n;
@@ -52,27 +55,24 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
-// Returns the best (lowest) edit-distance score between query and any
-// substring-window of `text` of similar length — lets "drss" match "Dress"
-// even inside a longer product name like "Summer Dress".
+// Lower score = closer match. Exact substring match always wins (score 0).
 function fuzzyScore(query, text) {
   query = query.toLowerCase().trim();
   text  = text.toLowerCase();
   if (!query) return Infinity;
-  if (text.includes(query)) return 0; // exact substring = best possible score
+  if (text.includes(query)) return 0;
   const words = text.split(/\s+/);
   let best = Infinity;
   for (const w of words) {
     const d = levenshtein(query, w);
     if (d < best) best = d;
   }
-  // also compare against full text in case query spans multiple words
   best = Math.min(best, levenshtein(query, text));
   return best;
 }
 
-// Returns up to `limit` items sorted by closeness to query.
-// Tolerance scales with query length so short queries aren't too lenient.
+// Returns up to `limit` items whose name is closest to `query`,
+// tolerating typos. Tolerance scales with query length.
 export function fuzzySuggest(items, query, limit = 6) {
   const q = query.trim();
   if (!q) return [];

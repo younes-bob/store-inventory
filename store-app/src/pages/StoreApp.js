@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { getItems, setItems as dbSetItems, getSales, setSales as dbSetSales, syncPending } from '../supabase';
 import { CATEGORIES } from '../config';
-import { uid, fmt, clamp, isToday, stockBadge, isLight, exportCSV, fmtDate } from '../utils';
+import { uid, fmt, clamp, isToday, stockBadge, isLight, exportCSV, fmtDate, fuzzySuggest } from '../utils';
 import { ToastContainer, Spinner, Dot, Modal, PhotoBox, ColorPicker, VariantBuilder } from '../components/ui';
 import VisualSearch from '../components/VisualSearch';
 import useToast from '../hooks/useToast';
@@ -410,6 +410,8 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   const [online,setOnline]=useState(isOnline());
   const [pendingSync,setPendingSync]=useState(false);
   const [search,setSearch]=useState('');
+  const [showSuggestions,setShowSuggestions]=useState(false);
+  const searchBoxRef=useRef(null);
   const [filterCat,setFilterCat]=useState(0);
   const [filterStock,setFilterStock]=useState('All');
   const [showAdd,setShowAdd]=useState(false);
@@ -423,6 +425,18 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   const [sub,setSub]=useState(null);
   const plan=getPlan(sub?.plan||'free');
   const planActive=isSubscriptionActive(sub);
+
+  // Fuzzy "did you mean" suggestions for the search box
+  const suggestions = useMemo(() => fuzzySuggest(items, search, 6), [items, search]);
+
+  // Close suggestions dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) setShowSuggestions(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   // Initial load
   useEffect(()=>{
@@ -592,10 +606,34 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
       {tab==='sales'?<SalesPage sales={sales} onClear={()=>updateSales([])} onReturn={handleReturn} storeName={store.name} t={t} plan={plan}/>:(
         <div style={{maxWidth:900,margin:'0 auto',padding:'20px 20px 0'}}>
           <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:18}}>
-            <div style={{flex:1,minWidth:180,position:'relative'}}>
+            <div ref={searchBoxRef} style={{flex:1,minWidth:180,position:'relative'}}>
               <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontSize:15,color:'#9ca3af'}}>🔍</span>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.search}
+              <input value={search}
+                onChange={e=>{setSearch(e.target.value);setShowSuggestions(true);}}
+                onFocus={()=>setShowSuggestions(true)}
+                placeholder={t.search}
                 style={{width:'100%',boxSizing:'border-box',padding:'12px 14px 12px 40px',borderRadius:14,border:'1.5px solid #e5e7eb',fontSize:13,outline:'none',background:'#fff',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}/>
+              {showSuggestions && search.trim() && suggestions.length>0 && (
+                <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,right:0,zIndex:50,background:'#fff',borderRadius:14,boxShadow:'0 12px 32px rgba(0,0,0,.15)',border:'1px solid #f0f0f0',overflow:'hidden'}}>
+                  {suggestions.map(item=>{
+                    const tot=item.variants.reduce((s,v)=>s+v.stock,0);
+                    return (
+                      <div key={item.id} onClick={()=>{setSearch(item.name);setShowSuggestions(false);}}
+                        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:'pointer',borderBottom:'1px solid #f5f5f5'}}
+                        onMouseEnter={e=>e.currentTarget.style.background='#f8faff'}
+                        onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
+                        <div style={{width:32,height:32,borderRadius:8,overflow:'hidden',background:'#f3f4f6',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                          {item.photo?<img src={item.photo} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontSize:14}}>👕</span>}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:13,color:'#111',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
+                          <div style={{fontSize:11,color:'#9ca3af'}}>{fmt(item.price)} · {tot} in stock</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <select value={filterCat} onChange={e=>setFilterCat(Number(e.target.value))} style={{padding:'12px 14px',borderRadius:14,border:'1.5px solid #e5e7eb',fontSize:13,background:'#fff',outline:'none',cursor:'pointer',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
               {t.categories.map((c,i)=><option key={c} value={i}>{c}</option>)}
@@ -643,4 +681,3 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
     </div>
   );
 }
-import { uid, fmt, clamp, isToday, stockBadge, isLight, exportCSV, fmtDate, fuzzySuggest } from '../utils';

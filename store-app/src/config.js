@@ -7,6 +7,7 @@ export const STORES = [
   { id: 's1', name: 'Main Branch',    code: 'MAIN01' },
   { id: 's2', name: 'Downtown Store', code: 'DOWN02' },
   { id: 's3', name: 'Mall Kiosk',     code: 'MALL03' },
+  { id: 's4', name: 'Hnout',     code: 'HANOUT1' },
 ];
 
 export const PALETTE = [

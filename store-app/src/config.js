@@ -1,5 +1,7 @@
-export const ADMIN_PASS = 'ADMIN2024';
-export const LOW_STOCK  = 5;
+export const ADMIN_PASS  = 'ADMIN2024';
+export const OWNER_PASS  = 'YOUNESMAMECHE123'; // your secret owner password - change this!
+export const OWNER_WHATSAPP = '213557095489';   // your WhatsApp number (with country code, no +)
+export const LOW_STOCK   = 5;
 
 export const STORES = [
   { id: 's1', name: 'Main Branch',    code: 'MAIN01' },
@@ -27,6 +29,30 @@ export const PALETTE = [
 
 export const SIZES = ['XS','S','M','L','XL','XXL','28','30','32','34','36','38','6','7','8','9','10','11'];
 export const CATEGORIES = ['Tops','Bottoms','Dresses','Outerwear','Shoes','Accessories'];
+
+export const PLANS = {
+  free: {
+    id: 'free', name: 'Free', nameFr: 'Gratuit', nameAr: 'مجاني',
+    price: 0, color: '#6b7280', gradient: 'linear-gradient(135deg,#6b7280,#4b5563)',
+    limits: { stores:1, products:30, csvExport:false, visualSearch:false },
+    features: ['1 store','Up to 30 products','Basic inventory'],
+    missing: ['CSV export','Photo search','Multiple stores'],
+  },
+  standard: {
+    id: 'standard', name: 'Standard', nameFr: 'Standard', nameAr: 'قياسي',
+    price: 990, color: '#4f46e5', gradient: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+    limits: { stores:3, products:Infinity, csvExport:true, visualSearch:true },
+    features: ['Up to 3 stores','Unlimited products','CSV export','Photo search (AI)'],
+    missing: ['Unlimited stores'],
+  },
+  pro: {
+    id: 'pro', name: 'Pro', nameFr: 'Pro', nameAr: 'احترافي',
+    price: 2490, color: '#059669', gradient: 'linear-gradient(135deg,#059669,#0d9488)',
+    limits: { stores:Infinity, products:Infinity, csvExport:true, visualSearch:true },
+    features: ['Unlimited stores','Unlimited products','CSV export','Photo search (AI)','Priority support'],
+    missing: [],
+  },
+};
 
 export const T = {
   en: {

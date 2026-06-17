@@ -1,6 +1,6 @@
 export const ADMIN_PASS  = 'ADMIN2024';
-export const OWNER_PASS  = 'OWNER_SECRET_2024'; // your secret owner password - change this!
-export const OWNER_WHATSAPP = '213XXXXXXXXX';   // your WhatsApp number (with country code, no +)
+export const OWNER_PASS  = 'YOUNESMAMECHE123'; // your secret owner password - change this!
+export const OWNER_WHATSAPP = '213557095489';   // your WhatsApp number (with country code, no +)
 export const LOW_STOCK   = 5;
 
 export const STORES = [

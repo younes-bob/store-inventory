@@ -35,3 +35,52 @@ export function exportCSV(sales, storeName) {
   a.href = url; a.download = `${storeName}-sales-${Date.now()}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
+/* ── Fuzzy search ─────────────────────────────── */
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i-1] === b[j-1]) dp[i][j] = dp[i-1][j-1];
+      else dp[i][j] = 1 + Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+
+// Returns the best (lowest) edit-distance score between query and any
+// substring-window of `text` of similar length — lets "drss" match "Dress"
+// even inside a longer product name like "Summer Dress".
+function fuzzyScore(query, text) {
+  query = query.toLowerCase().trim();
+  text  = text.toLowerCase();
+  if (!query) return Infinity;
+  if (text.includes(query)) return 0; // exact substring = best possible score
+  const words = text.split(/\s+/);
+  let best = Infinity;
+  for (const w of words) {
+    const d = levenshtein(query, w);
+    if (d < best) best = d;
+  }
+  // also compare against full text in case query spans multiple words
+  best = Math.min(best, levenshtein(query, text));
+  return best;
+}
+
+// Returns up to `limit` items sorted by closeness to query.
+// Tolerance scales with query length so short queries aren't too lenient.
+export function fuzzySuggest(items, query, limit = 6) {
+  const q = query.trim();
+  if (!q) return [];
+  const maxDist = q.length <= 3 ? 1 : q.length <= 6 ? 2 : 3;
+  return items
+    .map(item => ({ item, score: fuzzyScore(q, item.name) }))
+    .filter(r => r.score <= maxDist)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, limit)
+    .map(r => r.item);
+}

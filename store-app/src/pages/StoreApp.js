@@ -6,6 +6,9 @@ import { ToastContainer, Spinner, Dot, Modal, PhotoBox, ColorPicker, VariantBuil
 import VisualSearch from '../components/VisualSearch';
 import useToast from '../hooks/useToast';
 import { isOnline, onNetworkChange, hasPending, readCache } from '../offlineManager';
+import { getSubscription, isSubscriptionActive } from '../supabase';
+import { getPlan, canAddProduct, canExportCSV, canUseVisualSearch } from '../subscription';
+import SubscriptionPage from './SubscriptionPage';
 
 /* ── Offline banner ── */
 function OfflineBanner({ pending }) {
@@ -36,7 +39,7 @@ function ProductForm({ initial, onSubmit, onClose, t }) {
   const [err, setErr] = useState('');
   function submit() {
     if (!name.trim()) { setErr(t.productName); return; }
-    if (!price || Number(price)<0) { setErr(t.price); return; }
+    if (price==='' || price===null || Number(price)<0) { setErr(t.price); return; }
     // Build variants and merge any duplicates by summing stock
     const rawVariants = rows.flatMap(r=>r.sizes.filter(s=>s.size).map(s=>({color:r.color,hex:r.hex,size:s.size,stock:clamp(s.stock,0,9999)})));
     const mergeMap={};
@@ -109,7 +112,7 @@ function SaleModal({ item, onSell, onClose, t }) {
   const salePriceNum   = parseFloat(salePrice)||0;
   const discountPct    = salePriceNum<item.price?Math.round((1-salePriceNum/item.price)*100):0;
   const total          = salePriceNum*qty;
-  function changeColor(c){setSelC(c);const b=variants.find(v=>v.color===c&&v.stock>0)||variants.find(v=>v.color===c);setSelS(b?.size||'');setQty(1);}
+  function changeColor(c){setSelC(c);const b=mergedVariants.find(v=>v.color===c&&v.stock>0)||mergedVariants.find(v=>v.color===c);setSelS(b?.size||'');setQty(1);}
   function sell(){
     if(!variant){setMsg({text:'Select size.',ok:false});return;}
     if(qty<1||qty>variant.stock){setMsg({text:`Only ${variant.stock} in stock.`,ok:false});return;}
@@ -322,14 +325,14 @@ function ReturnModal({ sale, onConfirm, onClose, t }) {
 }
 
 /* ── SalesPage ── */
-function SalesPage({ sales, onClear, onReturn, storeName, t }) {
+function SalesPage({ sales, onClear, onReturn, storeName, t, plan }) {
   const [filter,setFilter]=useState('all');
   const [returnSale,setReturnSale]=useState(null);
   const now=Date.now();
   const filtered=useMemo(()=>{const s=[...sales].sort((a,b)=>b.ts-a.ts);if(filter==='today')return s.filter(r=>isToday(r.ts));if(filter==='week')return s.filter(r=>r.ts>now-7*24*3600*1000);return s;},[sales,filter,now]);
   const active=filtered.filter(r=>!r.returned);
   const rev=active.reduce((s,r)=>s+r.total,0);
-  const sold=active.reduce((s,r)=>s+r.qty,0);
+  const sold=active.reduce((s,r)=>s+(r.qty-(r.returnedQty||0)),0);
   const todayRev=sales.filter(r=>isToday(r.ts)&&!r.returned).reduce((s,r)=>s+r.total,0);
   return(
     <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 60px'}}>
@@ -352,7 +355,10 @@ function SalesPage({ sales, onClear, onReturn, storeName, t }) {
               ))}
             </div>
             {sales.length>0&&<>
-              <button onClick={()=>exportCSV(sales,storeName)} style={{padding:'6px 14px',background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:20,cursor:'pointer',fontSize:12,fontWeight:700,color:'#15803d'}}>{t.exportCSV}</button>
+              {canExportCSV(plan?.id||'free')
+                ? <button onClick={()=>exportCSV(sales,storeName)} style={{padding:'6px 14px',background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:20,cursor:'pointer',fontSize:12,fontWeight:700,color:'#15803d'}}>{t.exportCSV}</button>
+                : <div title="Upgrade to Standard or Pro to export CSV" style={{padding:'6px 14px',background:'#f3f4f6',border:'1px solid #e5e7eb',borderRadius:20,cursor:'not-allowed',fontSize:12,fontWeight:700,color:'#9ca3af'}}>🔒 {t.exportCSV}</div>
+              }
               <button onClick={()=>{if(window.confirm(t.clearConfirm))onClear();}} style={{padding:'6px 14px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:20,cursor:'pointer',fontSize:12,fontWeight:700,color:'#dc2626'}}>{t.clearAll}</button>
             </>}
           </div>
@@ -407,19 +413,23 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   const [filterCat,setFilterCat]=useState(0);
   const [filterStock,setFilterStock]=useState('All');
   const [showAdd,setShowAdd]=useState(false);
+  const [showSub,setShowSub]=useState(false);
   const [showVS,setShowVS]=useState(false);
   const [highlightId,setHighlightId]=useState(null);
   const cardRefs=useRef({});
   const saveItemsTimer=useRef(null);
   const saveSalesTimer=useRef(null);
   const {toasts,show:toast}=useToast();
+  const [sub,setSub]=useState(null);
+  const plan=getPlan(sub?.plan||'free');
+  const planActive=isSubscriptionActive(sub);
 
   // Initial load
   useEffect(()=>{
     let mounted=true;
     (async()=>{
-      const[i,s]=await Promise.all([getItems(store.id),getSales(store.id)]);
-      if(mounted){setItemsState(i);setSalesState(s);setLoading(false);setPendingSync(hasPending(store.id));}
+      const[i,s,subscription]=await Promise.all([getItems(store.id),getSales(store.id),getSubscription()]);
+      if(mounted){setItemsState(i);setSalesState(s);setSub(subscription);setLoading(false);setPendingSync(hasPending(store.id));}
     })();
     return()=>{mounted=false;};
   },[store.id]);
@@ -428,6 +438,7 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   useEffect(()=>{
     const iv=setInterval(async()=>{
       if(!isOnline())return;
+      if(hasPending(store.id))return; // don't overwrite unsaved local changes
       const[i,s]=await Promise.all([getItems(store.id),getSales(store.id)]);
       setItemsState(i);setSalesState(s);
     },15000);
@@ -490,8 +501,9 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
 
   function handleReturn(sale, returnQty) {
     const refund = sale.salePrice * returnQty;
-    const fullyReturned = returnQty >= sale.qty;
-    updateSales(prev=>prev.map(s=>s.id!==sale.id?s:{...s,returned:fullyReturned,partialReturn:!fullyReturned,returnedQty:returnQty,returnedAt:Date.now(),total:Math.max(0,s.total-refund)}));
+    const totalReturned = (sale.returnedQty || 0) + returnQty;
+    const fullyReturned = totalReturned >= sale.qty;
+    updateSales(prev=>prev.map(s=>s.id!==sale.id?s:{...s,returned:fullyReturned,partialReturn:!fullyReturned,returnedQty:totalReturned,returnedAt:Date.now(),total:Math.max(0,s.total-refund)}));
     updateItems(prev=>prev.map(i=>i.id!==sale.itemId?i:{...i,variants:i.variants.map(v=>v.color===sale.color&&v.size===sale.size?{...v,stock:clamp(v.stock+returnQty,0,9999)}:v)}));
     toast(returnQty+"× "+sale.itemName+" returned — stock restored","warn");
   }
@@ -519,6 +531,7 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
     : syncStatus==='saving'?t.saving:syncStatus==='error'?t.saveFailed:t.synced;
 
   if(loading)return <Spinner label={`Loading ${store.name}…`}/>;
+  if(showSub)return <SubscriptionPage store={store} onBack={()=>setShowSub(false)}/>;
 
   const fontFamily = lang==='ar'?"'Segoe UI',Tahoma,sans-serif":"'Inter',system-ui,sans-serif";
 
@@ -546,6 +559,10 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
                   </button>
                 ))}
               </div>
+              <button onClick={()=>setShowSub(true)}
+                style={{padding:'8px 14px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:20,cursor:'pointer',color:'#fff',fontWeight:700,fontSize:12,transition:'all .2s',display:'flex',alignItems:'center',gap:5}}>
+                {plan.id==='free'?'🆓':plan.id==='standard'?'⭐':'🚀'} {plan.name}
+              </button>
               <button onClick={onLogout} style={{padding:'8px 16px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:20,cursor:'pointer',color:'#fff',fontWeight:700,fontSize:13,transition:'all .2s'}}>{t.logOut}</button>
             </div>
           </div>
@@ -572,7 +589,7 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
         </div>
       </div>
 
-      {tab==='sales'?<SalesPage sales={sales} onClear={()=>updateSales([])} onReturn={handleReturn} storeName={store.name} t={t}/>:(
+      {tab==='sales'?<SalesPage sales={sales} onClear={()=>updateSales([])} onReturn={handleReturn} storeName={store.name} t={t} plan={plan}/>:(
         <div style={{maxWidth:900,margin:'0 auto',padding:'20px 20px 0'}}>
           <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:18}}>
             <div style={{flex:1,minWidth:180,position:'relative'}}>
@@ -589,10 +606,14 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
               <option value="Low">{t.low}</option>
               <option value="Out">{t.out}</option>
             </select>
-            <button onClick={()=>setShowVS(true)} title={t.searchByPhoto} style={{padding:'12px 16px',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',border:'none',borderRadius:14,fontWeight:800,fontSize:16,cursor:'pointer',boxShadow:'0 4px 14px rgba(99,102,241,.35)'}}>📸</button>
-            <button onClick={()=>setShowAdd(true)} style={{padding:'12px 20px',background:'linear-gradient(135deg,#4f46e5,#7c3aed)',color:'#fff',border:'none',borderRadius:14,fontWeight:800,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',boxShadow:'0 4px 14px rgba(79,70,229,.35)'}}>
-              {t.newProduct}
-            </button>
+            {canUseVisualSearch(plan.id)
+              ? <button onClick={()=>setShowVS(true)} title={t.searchByPhoto} style={{padding:'12px 16px',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'#fff',border:'none',borderRadius:14,fontWeight:800,fontSize:16,cursor:'pointer',boxShadow:'0 4px 14px rgba(99,102,241,.35)'}}>📸</button>
+              : <div title="Upgrade to Standard or Pro to use Photo Search" style={{padding:'12px 16px',background:'#e5e7eb',color:'#9ca3af',borderRadius:14,fontWeight:800,fontSize:16,cursor:'not-allowed'}}>🔒</div>
+            }
+            {canAddProduct(plan.id,items.length)
+              ? <button onClick={()=>setShowAdd(true)} style={{padding:'12px 20px',background:'linear-gradient(135deg,#4f46e5,#7c3aed)',color:'#fff',border:'none',borderRadius:14,fontWeight:800,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',boxShadow:'0 4px 14px rgba(79,70,229,.35)'}}>{t.newProduct}</button>
+              : <div title={`Upgrade to add more products (${plan.limits.products} max on ${plan.name})`} style={{padding:'12px 20px',background:'#e5e7eb',color:'#9ca3af',borderRadius:14,fontWeight:800,fontSize:13,cursor:'not-allowed',whiteSpace:'nowrap'}}>🔒 {t.newProduct}</div>
+            }
           </div>
           {search&&<p style={{fontSize:12,color:'#9ca3af',margin:'0 0 14px'}}>{filtered.length} result{filtered.length!==1?'s':''} for "{search}"</p>}
           {filtered.length===0?(

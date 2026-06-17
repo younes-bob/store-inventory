@@ -1,7 +1,7 @@
 import { LOW_STOCK } from './config';
 
 export const uid   = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-export const fmt = n => Number(n).toLocaleString('fr-DZ') + ' DA';
+export const fmt   = n  => Number(n).toLocaleString('fr-DZ') + ' DA';
 export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export const sanitize = s => String(s).trim().slice(0, 200);
 
@@ -21,7 +21,7 @@ export function stockBadge(n) {
 }
 
 export function exportCSV(sales, storeName) {
-  const header = ['Date','Product','Color','Size','Qty','Unit Price','Original Price','Discount %','Total','Note'];
+  const header = ['Date','Product','Color','Size','Qty','Unit Price','Original Price','Discount %','Total (DA)','Note'];
   const rows = [...sales].sort((a,b) => b.ts - a.ts).map(s => [
     fmtDate(s.ts), `"${s.itemName}"`, s.color, s.size, s.qty,
     s.salePrice.toFixed(2), s.originalPrice.toFixed(2),

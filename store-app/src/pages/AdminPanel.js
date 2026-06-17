@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { STORES, ADMIN_PASS } from '../config';
-import { getAllStoresData } from '../supabase';
+import { getAllStoresData, getSubscription, isSubscriptionActive } from '../supabase';
+import { getPlan } from '../subscription';
 import { fmt, fmtDate, isToday, exportCSV } from '../utils';
 import { Spinner } from '../components/ui';
+import SubscriptionPage from './SubscriptionPage';
 
 export default function AdminPanel({ t, lang, setLang, onBack }) {
   const [authed,       setAuthed]       = useState(false);
@@ -12,6 +14,8 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
   const [loading,      setLoading]      = useState(false);
   const [refreshing,   setRefreshing]   = useState(false);
   const [selectedStore, setSelectedStore] = useState(null);
+  const [tab, setTab] = useState('stores'); // 'stores' | 'subscription'
+  const [sub, setSub] = useState(null);
 
   async function fetchAll() {
     const ids  = STORES.map(s => s.id);
@@ -21,7 +25,9 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
   async function handleLogin() {
     if (pass !== ADMIN_PASS) { setPassErr('Wrong password.'); return; }
     setAuthed(true); setLoading(true);
-    setStoresData(await fetchAll());
+    const [data, subscription] = await Promise.all([fetchAll(), getSubscription()]);
+    setStoresData(data);
+    setSub(subscription);
     setLoading(false);
   }
 
@@ -138,6 +144,22 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
     );
   }
 
+  // Subscription info
+  const plan = getPlan(sub?.plan || 'free');
+  const planActive = isSubscriptionActive(sub);
+
+  if (tab === 'subscription') return (
+    <div style={{ minHeight:'100vh', background:'#f5f6fa' }}>
+      <div style={{ background:'linear-gradient(135deg,#1e1b4b,#4c1d95)', padding:'20px 28px' }}>
+        <div style={{ maxWidth:900, margin:'0 auto', display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+          <button onClick={()=>setTab('stores')} style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:10, padding:'8px 16px', cursor:'pointer', color:'#fff', fontWeight:700, fontSize:13 }}>← Stores</button>
+          <h2 style={{ color:'#fff', margin:0, fontSize:20, fontWeight:900 }}>💳 Subscription</h2>
+        </div>
+      </div>
+      <SubscriptionPage storesData={storesData}/>
+    </div>
+  );
+
   const allItems = Object.values(storesData).flatMap(d=>d.items);
   const allSales = Object.values(storesData).flatMap(d=>d.sales);
   const totalRev = allSales.filter(r=>!r.returned).reduce((s,r)=>s+r.total,0);
@@ -151,7 +173,14 @@ export default function AdminPanel({ t, lang, setLang, onBack }) {
             <h1 style={{ color:'#fff', margin:0, fontSize:22, fontWeight:900 }}>🔐 Admin Panel</h1>
             <p style={{ color:'#a5b4fc', margin:'4px 0 0', fontSize:13 }}>{STORES.length} stores · live data from Supabase</p>
           </div>
-          <div style={{ display:'flex', gap:8 }}>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+            <div style={{ padding:'6px 14px', borderRadius:20, background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.2)', fontSize:12, fontWeight:800, color: planActive ? '#4ade80' : '#fca5a5' }}>
+              {plan.id==='free'?'🆓':plan.id==='standard'?'⭐':'🚀'} {plan.name} {!planActive&&'(Expired)'}
+            </div>
+            <button onClick={()=>setTab('subscription')}
+              style={{ padding:'8px 16px', background:'linear-gradient(135deg,#4f46e5,#7c3aed)', border:'none', borderRadius:10, cursor:'pointer', color:'#fff', fontWeight:700, fontSize:13 }}>
+              💳 Subscription
+            </button>
             <button onClick={refresh} disabled={refreshing}
               style={{ padding:'8px 14px', background:'rgba(255,255,255,.15)', border:'none', borderRadius:10, cursor:refreshing?'not-allowed':'pointer', color:'#fff', fontWeight:700, fontSize:13 }}>
               {refreshing?'…':'🔄 Refresh'}

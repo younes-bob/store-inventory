@@ -49,7 +49,7 @@ export default function ProductForm({ initial, onSubmit, onClose, title, submitL
           </div>
           <div style={{ display:'flex', gap:12 }}>
             <div style={{ flex:1 }}>
-              <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Price (DA) *</label>
+              <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Price ($) *</label>
               <input type="number" min="0" step="0.01" value={price} onChange={e=>{ setPrice(e.target.value); setErr(''); }}
                 placeholder="0.00"
                 style={{ width:'100%', boxSizing:'border-box', padding:'10px 13px', borderRadius:10, border:'1.5px solid #e5e7eb', fontSize:14, outline:'none' }}/>

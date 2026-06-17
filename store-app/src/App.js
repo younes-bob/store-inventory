@@ -3,6 +3,7 @@ import { T, STORES } from './config';
 import LoginScreen from './pages/LoginScreen';
 import AdminPanel  from './pages/AdminPanel';
 import StoreApp    from './pages/StoreApp';
+import OwnerPanel  from './pages/OwnerPanel';
 
 function loadSession() {
   try {
@@ -11,9 +12,7 @@ function loadSession() {
     const { storeId, lang } = JSON.parse(raw);
     const store = STORES.find(s => s.id === storeId) || null;
     return { screen: store ? 'store' : 'login', store, lang: lang || 'en' };
-  } catch (_) {
-    return { screen: 'login', store: null, lang: 'en' };
-  }
+  } catch (_) { return { screen: 'login', store: null, lang: 'en' }; }
 }
 
 function saveSession(store, lang) {
@@ -24,6 +23,10 @@ function saveSession(store, lang) {
 }
 
 export default function App() {
+  // If URL path is /owner, show the owner panel directly
+  const isOwnerRoute = window.location.pathname === '/owner';
+  if (isOwnerRoute) return <OwnerPanel />;
+
   const init = loadSession();
   const [screen,       setScreen]       = useState(init.screen);
   const [currentStore, setCurrentStore] = useState(init.store);

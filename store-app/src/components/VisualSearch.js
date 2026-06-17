@@ -26,9 +26,8 @@ export default function VisualSearch({ items, onMatch, onClose, t }) {
     setStatus('analyzing');
     abortRef.current = new AbortController();
 
-    // Build a detailed catalogue for the AI
     const catalogue = items.map((it, idx) =>
-      `${idx+1}. ID="${it.id}" | Name="${it.name}" | Category="${it.category}" | Colors=[${[...new Set(it.variants.map(v=>v.color))].join(', ')}] | Price=$${it.price} | TotalStock=${it.variants.reduce((s,v)=>s+v.stock,0)}`
+      `${idx+1}. ID="${it.id}" | Name="${it.name}" | Category="${it.category}" | Colors=[${[...new Set(it.variants.map(v=>v.color))].join(', ')}] | Price=${it.price} DA | TotalStock=${it.variants.reduce((s,v)=>s+v.stock,0)}`
     ).join('\n');
 
     const base64    = photo.split(',')[1];
@@ -59,7 +58,7 @@ If truly no match possible:
         signal: abortRef.current.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 300,
           messages: [{ role:'user', content:[
             { type:'image', source:{ type:'base64', media_type:mediaType, data:base64 } },
@@ -70,7 +69,6 @@ If truly no match possible:
       if (!res.ok) throw new Error('API error ' + res.status);
       const data = await res.json();
       const raw  = (data.content || []).map(c=>c.text||'').join('').trim();
-      // Strip any markdown fences
       const cleaned = raw.replace(/```json\s*/gi,'').replace(/```/g,'').trim();
       const json = JSON.parse(cleaned);
       if (json.matchId && items.find(i => String(i.id) === String(json.matchId))) {
@@ -102,14 +100,12 @@ If truly no match possible:
           <button onClick={onClose} style={{ background:'#f3f4f6', border:'none', borderRadius:10, width:34, height:34, cursor:'pointer', fontSize:18, color:'#6b7280', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
 
-        {/* Photo preview */}
         {photo && (
           <div style={{ width:'100%', height:200, borderRadius:16, overflow:'hidden', marginBottom:14, background:'#111', border:'2px solid #e5e7eb' }}>
             <img src={photo} alt="search" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
           </div>
         )}
 
-        {/* Camera / Gallery — shown when no photo yet */}
         {!photo && (
           <div style={{ display:'flex', gap:12, marginBottom:16 }}>
             <label htmlFor={cameraId.current} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 10px', borderRadius:16, border:'2.5px dashed #a5b4fc', cursor:'pointer', background:'linear-gradient(135deg,#eef2ff,#f5f3ff)', gap:8 }}>
@@ -127,7 +123,6 @@ If truly no match possible:
           </div>
         )}
 
-        {/* Retake buttons when photo selected */}
         {photo && status==='idle' && (
           <div style={{ display:'flex', gap:8, marginBottom:14 }}>
             <label htmlFor={cameraId.current} style={{ flex:1, padding:'9px', borderRadius:10, border:'1.5px solid #e0e7ff', cursor:'pointer', background:'#eef2ff', textAlign:'center', fontSize:12, fontWeight:700, color:'#6366f1' }}>📷 {t.retake||'Retake'}</label>
@@ -137,14 +132,12 @@ If truly no match possible:
           </div>
         )}
 
-        {/* Analyze button */}
         {photo && status==='idle' && (
           <button onClick={analyze} style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff', border:'none', borderRadius:12, fontWeight:800, fontSize:15, cursor:'pointer', boxShadow:'0 4px 16px rgba(99,102,241,.35)' }}>
             {t.findProduct}
           </button>
         )}
 
-        {/* Analyzing */}
         {status==='analyzing' && (
           <div style={{ textAlign:'center', padding:'24px 0' }}>
             <div style={{ width:48, height:48, borderRadius:'50%', border:'4px solid #e0e7ff', borderTopColor:'#6366f1', animation:'spin .8s linear infinite', margin:'0 auto 16px' }}/>
@@ -154,7 +147,6 @@ If truly no match possible:
           </div>
         )}
 
-        {/* Match found */}
         {status==='match' && matchedItem && (
           <div style={{ borderRadius:16, border:'2px solid #bbf7d0', background:'#f0fdf4', overflow:'hidden' }}>
             <div style={{ padding:'12px 16px', background:'linear-gradient(135deg,#059669,#0d9488)', display:'flex', alignItems:'center', gap:8 }}>
@@ -185,7 +177,6 @@ If truly no match possible:
           </div>
         )}
 
-        {/* No match / error */}
         {(status==='nomatch'||status==='error') && (
           <div style={{ textAlign:'center', padding:'24px 16px', background:'#fef2f2', borderRadius:16, border:'2px solid #fecaca' }}>
             <div style={{ fontSize:42, marginBottom:10 }}>😕</div>

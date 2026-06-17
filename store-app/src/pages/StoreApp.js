@@ -428,7 +428,7 @@ export default function StoreApp({ store, t, lang, setLang, onLogout }) {
   useEffect(()=>{
     let mounted=true;
     (async()=>{
-      const[i,s,subscription]=await Promise.all([getItems(store.id),getSales(store.id),getSubscription()]);
+      const[i,s,subscription]=await Promise.all([getItems(store.id),getSales(store.id),getSubscription(store.id)]);
       if(mounted){setItemsState(i);setSalesState(s);setSub(subscription);setLoading(false);setPendingSync(hasPending(store.id));}
     })();
     return()=>{mounted=false;};

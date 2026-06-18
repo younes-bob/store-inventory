@@ -190,3 +190,94 @@ export function isSubscriptionActive(sub) {
   if (!sub.expires_at) return false;
   return new Date(sub.expires_at) > new Date();
 }
+/* ════════════════════════════════════════════════════════
+   AUTH + DYNAMIC STORES
+   Append this whole block to the end of your existing
+   store-app/src/supabase.js (the exports above are unchanged).
+   ════════════════════════════════════════════════════════ */
+
+/* ── Magic link auth ────────────────────────────── */
+export async function sendMagicLink(email) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.origin + '/owner-dashboard',
+    },
+  });
+  return !error;
+}
+
+export async function getCurrentUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) return null;
+  return data.user;
+}
+
+export function onAuthChange(callback) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    callback(session?.user || null);
+  });
+  return () => data.subscription.unsubscribe();
+}
+
+export async function signOutUser() {
+  await supabase.auth.signOut();
+}
+
+/* ── Dynamic stores (owned by a signed-in user) ──── */
+function genStoreCode() {
+  // 6-char uppercase code, avoiding ambiguous chars (0/O, 1/I)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+export async function getMyStores(userId) {
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('owner_id', userId)
+    .order('created_at', { ascending: true });
+  if (error || !data) return [];
+  return data;
+}
+
+export async function createStore(userId, name) {
+  let code = genStoreCode();
+  // Retry on the rare code collision (unique constraint)
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase
+      .from('stores')
+      .insert({ owner_id: userId, name: name.trim(), code })
+      .select()
+      .single();
+    if (!error) return data;
+    if (error.code === '23505') { code = genStoreCode(); continue; } // unique violation, retry
+    return null;
+  }
+  return null;
+}
+
+export async function deleteStore(storeId, userId) {
+  const { error } = await supabase
+    .from('stores')
+    .delete()
+    .eq('id', storeId)
+    .eq('owner_id', userId);
+  return !error;
+}
+
+// Looks up a store by its access code, checking BOTH the dynamic `stores`
+// table (via the public RPC, so it works for anonymous/logged-out staff
+// at the storefront login screen) and the hardcoded STORES array.
+export async function findStoreByCode(code, hardcodedStores) {
+  const upper = code.trim().toUpperCase();
+  const hardcoded = hardcodedStores.find(s => s.code === upper);
+  if (hardcoded) return hardcoded;
+  try {
+    const { data, error } = await supabase.rpc('find_store_by_code', { p_code: upper });
+    if (!error && data && data.length > 0) return data[0];
+  } catch (_) {}
+  return null;
+}

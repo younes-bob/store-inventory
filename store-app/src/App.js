@@ -4,28 +4,36 @@ import LoginScreen from './pages/LoginScreen';
 import AdminPanel  from './pages/AdminPanel';
 import StoreApp    from './pages/StoreApp';
 import OwnerPanel  from './pages/OwnerPanel';
+import OwnerSignup from './pages/OwnerSignup';
+import OwnerDashboard from './pages/OwnerDashboard';
 
 function loadSession() {
   try {
     const raw = localStorage.getItem('store_session');
     if (!raw) return { screen: 'login', store: null, lang: 'en' };
-    const { storeId, lang } = JSON.parse(raw);
-    const store = STORES.find(s => s.id === storeId) || null;
-    return { screen: store ? 'store' : 'login', store, lang: lang || 'en' };
+    const { store, lang } = JSON.parse(raw);
+    return { screen: store ? 'store' : 'login', store: store || null, lang: lang || 'en' };
   } catch (_) { return { screen: 'login', store: null, lang: 'en' }; }
 }
 
 function saveSession(store, lang) {
   try {
-    if (store) localStorage.setItem('store_session', JSON.stringify({ storeId: store.id, lang }));
+    // Store the full store object (works for both hardcoded and dynamic stores)
+    if (store) localStorage.setItem('store_session', JSON.stringify({ store, lang }));
     else localStorage.removeItem('store_session');
   } catch (_) {}
 }
 
 export default function App() {
-  // If URL path is /owner, show the owner panel directly
-  const isOwnerRoute = window.location.pathname === '/owner';
-  if (isOwnerRoute) return <OwnerPanel />;
+  const path = window.location.pathname;
+  if (path === '/owner') return <OwnerPanel />;
+  if (path === '/signup') return <OwnerSignup onBack={() => { window.location.pathname = '/'; }} />;
+  if (path === '/owner-dashboard') return (
+    <OwnerDashboard onEnterStore={(store) => {
+      saveSession(store, 'en');
+      window.location.pathname = '/';
+    }} />
+  );
 
   const init = loadSession();
   const [screen,       setScreen]       = useState(init.screen);

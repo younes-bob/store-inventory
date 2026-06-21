@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { STORES } from '../config';
-import { findStoreByCode } from '../supabase';
 
 export default function LoginScreen({ t, lang, setLang, onLogin, onAdmin }) {
   const [code, setCode] = useState('');
   const [err,  setErr]  = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function handleLogin() {
+  function handleLogin() {
     const c = code.trim().toUpperCase();
     if (!c) { setErr(t.invalidCode); return; }
     setBusy(true);
-    const store = await findStoreByCode(c, STORES);
-    if (store) { onLogin(store); }
-    else { setErr(t.invalidCode); setBusy(false); }
+    setTimeout(() => {
+      const store = STORES.find(s => s.code === c);
+      if (store) { onLogin(store); }
+      else { setErr(t.invalidCode); setBusy(false); }
+    }, 200);
   }
 
   return (
@@ -47,10 +48,7 @@ export default function LoginScreen({ t, lang, setLang, onLogin, onAdmin }) {
           {busy ? '…' : t.enterStore}
         </button>
 
-        <div style={{ textAlign:'center', display:'flex', flexDirection:'column', gap:10 }}>
-          <a href="/signup" style={{ color:'#a5b4fc', fontSize:13, fontWeight:700, textDecoration:'none' }}>
-            ✨ Don't have a store? Create one free →
-          </a>
+        <div style={{ textAlign:'center' }}>
           <button onClick={onAdmin} style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(255,255,255,0.4)', fontSize:12, fontWeight:600, textDecoration:'underline' }}>
             {t.adminAccess}
           </button>
